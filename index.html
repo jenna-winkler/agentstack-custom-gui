@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Stack Chat</title>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background-color: #f4f4f4;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      box-shadow: 0 0 20px rgba(0,0,0,0.1);
+    }
+
+    .chat-header {
+      padding: 1.5rem 2rem;
+      background: #161616;
+      color: white;
+      border-bottom: 1px solid #393939;
+    }
+
+    .chat-header h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 400;
+    }
+
+    .messages-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 2rem;
+      background: #f4f4f4;
+    }
+
+    .message {
+      margin-bottom: 1.5rem;
+      display: flex;
+      gap: 1rem;
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message.user {
+      flex-direction: row-reverse;
+    }
+
+    .message-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #0f62fe;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      flex-shrink: 0;
+      font-size: 1.1rem;
+    }
+
+    .message.user .message-avatar {
+      background: #8a3ffc;
+    }
+
+    .message-content {
+      max-width: 70%;
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      line-height: 1.6;
+    }
+
+    .message.user .message-content {
+      background: #0f62fe;
+      color: white;
+    }
+
+    .message-text {
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .message-meta {
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      opacity: 0.7;
+    }
+
+    .input-container {
+      padding: 1.5rem 2rem;
+      background: white;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      gap: 1rem;
+      align-items: flex-end;
+    }
+
+    .input-wrapper {
+      flex: 1;
+    }
+
+    #message-input {
+      width: 100%;
+      min-height: 50px;
+      padding: 0.75rem 1rem;
+      border: 1px solid #8d8d8d;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 1rem;
+      resize: vertical;
+      transition: border-color 0.2s;
+    }
+
+    #message-input:focus {
+      outline: none;
+      border-color: #0f62fe;
+      box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.1);
+    }
+
+    #send-button {
+      padding: 0.75rem 2rem;
+      background: #0f62fe;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    #send-button:hover {
+      background: #0353e9;
+    }
+
+    #send-button:disabled {
+      background: #c6c6c6;
+      cursor: not-allowed;
+    }
+
+    .loading-message {
+      font-style: italic;
+      color: #525252;
+    }
+
+    .loading-dots::after {
+      content: '...';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60%, 100% { content: '...'; }
+    }
+
+    .error-notification {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #fff1f1;
+      border-left: 4px solid #da1e28;
+      color: #750e13;
+      border-radius: 4px;
+    }
+
+    .form-container {
+      margin-top: 1rem;
+      padding: 1.5rem;
+      background: #e8daff;
+      border-radius: 4px;
+      border-left: 4px solid #8a3ffc;
+    }
+
+    .form-title {
+      margin: 0 0 1rem 0;
+      font-weight: 600;
+      color: #161616;
+    }
+
+    .form-field {
+      margin-bottom: 1rem;
+    }
+
+    .form-field label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+      color: #161616;
+    }
+
+    .form-field input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #8d8d8d;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 1rem;
+    }
+
+    .form-actions {
+      margin-top: 1.5rem;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .form-actions button {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .form-actions button.primary {
+      background: #8a3ffc;
+      color: white;
+    }
+
+    .form-actions button.primary:hover {
+      background: #7c3dd6;
+    }
+
+    .approval-container {
+      margin-top: 1rem;
+      padding: 1.5rem;
+      background: #d0e2ff;
+      border-radius: 4px;
+      border-left: 4px solid #0f62fe;
+    }
+
+    .approval-title {
+      margin: 0 0 0.5rem 0;
+      font-weight: 600;
+      color: #161616;
+    }
+
+    .approval-description {
+      margin: 0 0 1.5rem 0;
+      color: #161616;
+    }
+
+    .approval-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .approval-actions button {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 4px;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .approval-actions button.approve {
+      background: #0f62fe;
+      color: white;
+    }
+
+    .approval-actions button.approve:hover {
+      background: #0353e9;
+    }
+
+    .approval-actions button.deny {
+      background: #da1e28;
+      color: white;
+    }
+
+    .approval-actions button.deny:hover {
+      background: #ba1b23;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      <h1>Agent Stack Chat</h1>
+    </div>
+    
+    <div class="messages-container" id="messages">
+      <!-- Messages will be added here dynamically -->
+    </div>
+    
+    <div class="input-container">
+      <div class="input-wrapper">
+        <textarea 
+          id="message-input" 
+          placeholder="Type your message..."
+          rows="1"
+        ></textarea>
+      </div>
+      <button id="send-button">Send</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
