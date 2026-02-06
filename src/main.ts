@@ -1,67 +1,76 @@
+import { handleTaskStatusUpdate, resolveUserMetadata, TaskStatusUpdateType, UserMetadataInputs } from "agentstack-sdk";
 import { createAgentClient, type AgentClient } from "./a2aClient";
 import { UIController } from "./ui";
-import type { UIMessage } from "./types";
-import { config } from "./config";
+import { createUiMessage, getErrorMessage, getTextFromParts } from "./utils";
+import { TERMINAL_TASK_STATES } from "./constants";
 
 class ChatApp {
   private ui: UIController;
-  private client: AgentClient | null = null;
-  private contextId: string;
+  private inputRequired: boolean;
+  private client?: AgentClient;
+  private contextId?: string;
+  private taskId?: string;
 
   constructor() {
     this.ui = new UIController();
-    // Generate a random context ID
-    this.contextId = crypto.randomUUID();
+    this.inputRequired = false;
   }
 
   async initialize() {
     try {
       console.log("Connecting to agent...");
-      // No auth needed when running with disable_auth
-      this.client = await createAgentClient();
+
+      const { client, context } = await createAgentClient();
+
+      this.client = client;
+      this.contextId = context.id;
 
       this.ui.onSendMessage(() => this.sendMessage());
 
-      const welcomeMessage: UIMessage = {
-        id: "welcome",
+      const welcomeMessage = createUiMessage({
         role: "agent",
         text: "Hello! I'm ready to help you. What would you like to know?",
-        timestamp: new Date(),
-      };
+      });
+
       this.ui.addMessage(welcomeMessage);
 
       console.log("Chat app initialized successfully!");
     } catch (error) {
       console.error("Initialization failed:", error);
-      const errorMessage: UIMessage = {
-        id: "error",
+
+      const errorMessage = createUiMessage({
         role: "agent",
         text: "Failed to connect to agent. Please check your configuration.",
-        timestamp: new Date(),
         metadata: {
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: getErrorMessage(error),
         },
-      };
+      });
+
       this.ui.addMessage(errorMessage);
     }
   }
 
-  async sendMessage() {
-    if (!this.client) return;
+  async sendMessage({ text: textParam, userInput }: { text?: string; userInput?: UserMetadataInputs } = {}) {
+    if (!this.client) {
+      return;
+    }
 
-    const text = this.ui.getUserInput();
-    if (!text) return;
+    const text = textParam || this.ui.getUserInput();
 
-    const userMessage: UIMessage = {
-      id: Date.now().toString(),
+    const userMessage = createUiMessage({
       role: "user",
       text,
-      timestamp: new Date(),
-    };
-    this.ui.addMessage(userMessage);
+    });
+
+    if (text) {
+      this.ui.addMessage(userMessage);
+    }
+
     this.ui.clearInput();
     this.ui.setInputEnabled(false);
     this.ui.addLoadingMessage();
+
+    const userMetadata = userInput ? await resolveUserMetadata(userInput) : {};
 
     try {
       const stream = this.client.sendMessageStream({
@@ -70,9 +79,16 @@ class ChatApp {
           role: "user",
           messageId: userMessage.id,
           contextId: this.contextId,
-          taskId: this.ui.getTaskId(),
-          parts: [{ kind: "text", text }],
-          // No metadata - the A2A proxy will inject platform extension metadata
+          taskId: this.taskId,
+          parts: text
+            ? [
+                {
+                  kind: "text",
+                  text,
+                },
+              ]
+            : [],
+          metadata: userMetadata,
         },
       });
 
@@ -80,52 +96,91 @@ class ChatApp {
         console.log("Received event:", event);
 
         if (event.kind === "task") {
-          this.ui.setTaskId(event.id);
+          this.setTaskId(event.id);
         }
 
         if (event.kind === "status-update") {
-          const { status } = event;
-          
+          const { status, taskId } = event;
+
+          this.setTaskId(taskId);
+
+          this.inputRequired = status.state === "input-required";
+
           // Handle errors
           if (status.state === "failed" || status.state === "rejected") {
             this.ui.removeLoadingMessage();
-            
+
             console.error("Task failed:", status);
             console.error("Message metadata:", status.message?.metadata);
-            
-            const errorText = status.message?.parts
-              ?.filter((p: any) => p.kind === "text")
-              .map((p: any) => p.text)
-              .join("\n") || "Task failed";
-              
-            const errorMessage: UIMessage = {
-              id: Date.now().toString(),
+
+            const errorText = getTextFromParts(status.message?.parts) || "Task failed";
+
+            const errorMessage = createUiMessage({
               role: "agent",
-              text: errorText || "An error occurred",
-              timestamp: new Date(),
-              metadata: { error: errorText },
-            };
+              text: errorText,
+              metadata: {
+                error: errorText,
+              },
+            });
+
             this.ui.addMessage(errorMessage);
-            continue;
+
+            // Handle successful messages
+          } else {
+            const { message } = status;
+
+            if (message) {
+              const text = getTextFromParts(message.parts);
+
+              if (text) {
+                this.ui.removeLoadingMessage();
+
+                const agentMessage = createUiMessage({
+                  id: message.messageId,
+                  role: "agent",
+                  text,
+                });
+
+                this.ui.addMessage(agentMessage);
+              }
+            }
+
+            handleTaskStatusUpdate(event).forEach(async (result) => {
+              switch (result.type) {
+                case TaskStatusUpdateType.FormRequired:
+                  const values = await this.ui.showForm(result.form, {
+                    contextId: this.contextId,
+                  });
+
+                  this.sendMessage({
+                    text: JSON.stringify(values, null, 2),
+                    userInput: {
+                      form: values,
+                    },
+                  });
+
+                  break;
+                case TaskStatusUpdateType.ApprovalRequired:
+                  const approval = await this.ui.showApproval(result.request);
+
+                  this.sendMessage({
+                    text: approval,
+                    userInput: {
+                      approvalResponse: {
+                        decision: approval,
+                      },
+                    },
+                  });
+
+                  break;
+                default:
+                  break;
+              }
+            });
           }
 
-          // Handle successful messages
-          if (status.message?.parts) {
-            const textParts = status.message.parts
-              .filter((p: any) => p.kind === "text")
-              .map((p: any) => p.text)
-              .join("\n");
-
-            if (textParts) {
-              this.ui.removeLoadingMessage();
-              const agentMessage: UIMessage = {
-                id: status.message.messageId || Date.now().toString(),
-                role: "agent",
-                text: textParts,
-                timestamp: new Date(),
-              };
-              this.ui.addMessage(agentMessage);
-            }
+          if (TERMINAL_TASK_STATES.has(status.state)) {
+            this.setTaskId(undefined);
           }
         }
       }
@@ -133,26 +188,34 @@ class ChatApp {
       this.ui.removeLoadingMessage();
     } catch (error) {
       console.error("Error sending message:", error);
+
       this.ui.removeLoadingMessage();
-      const errorMessage: UIMessage = {
-        id: Date.now().toString(),
+
+      const errorMessage = createUiMessage({
         role: "agent",
         text: "Sorry, something went wrong.",
-        timestamp: new Date(),
         metadata: {
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: getErrorMessage(error),
         },
-      };
+      });
+
       this.ui.addMessage(errorMessage);
     } finally {
-      this.ui.setInputEnabled(true);
+      if (!this.inputRequired) {
+        this.ui.setInputEnabled(true);
+      }
     }
+  }
+
+  setTaskId(taskId?: string) {
+    this.taskId = taskId;
   }
 }
 
 // Start the app when DOM is ready
 const startApp = () => {
   const app = new ChatApp();
+
   app.initialize();
 };
 

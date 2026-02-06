@@ -115,11 +115,11 @@
       border-top: 1px solid #e0e0e0;
       display: flex;
       gap: 1rem;
-      align-items: flex-end;
     }
 
     .input-wrapper {
       flex: 1;
+      display: flex;
     }
 
     #message-input {
@@ -187,6 +187,10 @@
       border-radius: 4px;
     }
 
+    .error-notification.is-hidden {
+      display: none;
+    }
+
     .form-container {
       margin-top: 1rem;
       padding: 1.5rem;
@@ -212,13 +216,25 @@
       color: #161616;
     }
 
-    .form-field input {
+    .form-field input:not([type="checkbox"]),
+    .form-field select {
       width: 100%;
       padding: 0.75rem;
       border: 1px solid #8d8d8d;
       border-radius: 4px;
       font-family: inherit;
       font-size: 1rem;
+    }
+
+    .form-field select[multiple] {
+      min-height: 7rem;
+    }
+
+    .form-field input[type="checkbox"] {
+      width: 1rem;
+      height: 1rem;
+      margin-top: 0.25rem;
+      accent-color: #8a3ffc;
     }
 
     .form-actions {
@@ -289,12 +305,12 @@
       background: #0353e9;
     }
 
-    .approval-actions button.deny {
+    .approval-actions button.reject {
       background: #da1e28;
       color: white;
     }
 
-    .approval-actions button.deny:hover {
+    .approval-actions button.reject:hover {
       background: #ba1b23;
     }
   </style>

@@ -4,20 +4,15 @@ import { config } from "./config";
 // Build the API client
 export const api = buildApiClient({
   baseUrl: config.baseUrl,
-  ...(config.authToken && {
-    headers: {
-      Authorization: `Bearer ${config.authToken}`,
-    },
-  }),
 });
 
 // Helper to create a context for the conversation
-export async function createConversationContext() {
+export async function createContext() {
   const response = await api.createContext({
     provider_id: config.providerId,
     metadata: { created_at: new Date().toISOString() },
   });
-  
+
   return unwrapResult(response);
 }
 
@@ -36,6 +31,26 @@ export async function createContextToken(contextId: string) {
       context_data: ["read", "write"],
     },
   });
-  
+
   return unwrapResult(response);
+}
+
+export async function uploadFilesToContext({ contextId, files }: { contextId: string; files: File[] }) {
+  const uploadedFiles = await Promise.all(
+    files.map(async (file) => {
+      const response = await api.createFile({
+        context_id: contextId,
+        file,
+      });
+      const uploadedFile = unwrapResult(response);
+
+      return {
+        uri: `agentstack://${uploadedFile.id}`,
+        name: uploadedFile.filename,
+        mime_type: uploadedFile.content_type,
+      };
+    }),
+  );
+
+  return uploadedFiles;
 }
