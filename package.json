@@ -17,9 +17,10 @@
     "@a2a-js/sdk": "^0.3.10",
     "@carbon/web-components": "^2.47.0",
     "@types/node": "^25.2.0",
-    "agentstack-sdk": "file:../../agentstack/apps/agentstack-sdk-ts",
+    "agentstack-sdk": "0.6.1-rc1",
     "carbon-components": "^10.59.2",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"
-  }
+  },
+  "packageManager": "pnpm@9.9.0+sha512.60c18acd138bff695d339be6ad13f7e936eea6745660d4cc4a776d5247c540d0edee1a563695c183a66eb917ef88f2b4feb1fc25f32a7adcadc7aaf3438e99c1"
 }
